@@ -8,7 +8,7 @@
 - **MSSV:** 2A202602374
 - **Lớp:** K4-L3A
 - **Repository URL:** https://github.com/tiendungandrew-gif/K4-L3-DAY13-NgoTienDung-2A202602374-Monitoring-LLMOps
-- **Commit SHA cuối:**
+- **Commit SHA cuối:** `84b35f02019ee128fa1ff06e13da87de47e2312c`
 - **Challenge ID:** day13-k4-l3a-monitoring-llmops-v1
 - **Tên project Langfuse cá nhân:** `day13-k4-l3a-2A202602374`
 

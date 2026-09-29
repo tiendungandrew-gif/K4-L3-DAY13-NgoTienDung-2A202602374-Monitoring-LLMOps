@@ -48,20 +48,20 @@
 ## 4. Logging và PII
 
 - **Cách tạo/nhận và truyền correlation ID:**
-  - Trong `CorrelationIdMiddleware`, trước mỗi request thực hiện `clear_contextvars()` để tránh leak context giữa các request.
+  - Trong [`app/middleware.py`](../app/middleware.py) (`CorrelationIdMiddleware`), trước mỗi request thực hiện `clear_contextvars()` để tránh leak context giữa các request.
   - Lấy `correlation_id` từ request header `x-request-id`; nếu client không truyền thì tự sinh mã mới theo định dạng `req-<8-hex>` (`f"req-{uuid.uuid4().hex[:8]}"`).
   - Gắn ID vào structlog context qua `bind_contextvars(correlation_id=correlation_id)` và gán vào `request.state.correlation_id`.
-  - Trả ID và thời gian xử lý về cho client qua header response: `x-request-id` và `x-response-time-ms`. Đồng thời truyền ID vào `agent.run()` để liên kết với Langfuse trace metadata.
+  - Trả ID và thời gian xử lý về cho client qua header response: `x-request-id` và `x-response-time-ms`. Đồng thời truyền ID vào `agent.run()` trong [`app/agent.py`](../app/agent.py) để liên kết với Langfuse trace metadata.
 - **Các metadata được ghi vào structured log:**
   - Metadata hệ thống bắt buộc: `ts` (ISO UTC), `level`, `service="api"`, `event`, `correlation_id`.
-  - Metadata ngữ cảnh request: `user_id_hash` (băm SHA-256 rút gọn 12 ký tự của user_id), `session_id`, `feature`, `model`, `env` (được bind trước khi ghi log `request_received`).
+  - Metadata ngữ cảnh request: `user_id_hash` (băm SHA-256 rút gọn 12 ký tự của user_id), `session_id`, `feature`, `model`, `env` (được bind trước khi ghi log `request_received` trong [`app/main.py`](../app/main.py)).
   - Metadata hiệu năng & kết quả: `latency_ms`, `ttft_ms`, `tokens_in`, `tokens_out`, `cost_usd`, `quality_score`, `tool_name`, `tool_success` (trong `response_sent`) và `error_type` (khi `request_failed`).
 - **Cách bảo đảm PII được scrub trước khi ghi:**
-  - Cấu hình regex trong `PII_PATTERNS` cho email, số điện thoại Việt Nam, CCCD 12 số, và số thẻ tín dụng 16 số.
+  - Cấu hình regex trong `PII_PATTERNS` tại [`app/logging_config.py`](../app/logging_config.py) cho email, số điện thoại Việt Nam, CCCD 12 số, và số thẻ tín dụng 16 số.
   - Cài đặt processor `scrub_event` đệ quy để quét và che toàn bộ chuỗi nhạy cảm thành `[REDACTED_<TYPE>]` trên tất cả các field của `event_dict`.
   - Đăng ký `scrub_event` vào pipeline của Structlog ngay trước `JsonlFileProcessor` và `JSONRenderer`. Nhờ đó dữ liệu được làm sạch hoàn toàn trước khi serialize JSON và ghi xuống file `data/logs.jsonl`.
 - **Cách kiểm chứng kết quả:**
-  - Chạy `python -m pytest -q`: 24/24 tests PASS (bao gồm các test che email, số điện thoại, CCCD, thẻ thanh toán).
+  - Chạy `.venv/Scripts/python -m pytest -q`: 24/24 tests PASS (bao gồm các test che email, số điện thoại, CCCD, thẻ thanh toán tại [`tests/test_pii.py`](../tests/test_pii.py)).
   - Chạy `python scripts/validate_logs.py`: Đạt điểm tuyệt đối **100/100** (0 missing required fields, 0 missing context, 10/10 correlation IDs duy nhất, 0 PII leak).
   - Kiểm tra trực tiếp log thực tế trong `data/logs.jsonl` và response headers xác nhận correlation ID được truyền thông suốt.
 
@@ -71,12 +71,12 @@
   - Traces được gửi về đúng project Langfuse cá nhân `day13-k4-l3a-2A202602374` thông qua API key và Secret key riêng trong `.env`.
   - Mọi trace đều chứa metadata `correlation_id` trùng khớp với correlation ID trong file log `data/logs.jsonl`, kèm tags `["lab", feature, "claude-sonnet-4-5"]` và `environment: "dev"`.
 - **Cấu trúc root/retrieval/generation observations:**
-  - Root observation: `lab-agent-run` (type `AGENT`, `is_root_observation: true`).
-  - Child observation 1: `retrieval` (type `RETRIEVER`, có `parent_observation_id` trỏ về root `lab-agent-run`), ghi nhận thời gian tra cứu tài liệu từ corpus.
-  - Child observation 2: `fake-llm-generate` (type `GENERATION`, có `parent_observation_id` trỏ về root `lab-agent-run`), ghi nhận `model="claude-sonnet-4-5"`, token usage (`input_tokens`, `output_tokens`, `total`), chi phí `cost_details`, `ttft_ms` và liên kết prompt template.
+  - Root observation: `lab-agent-run` (type `AGENT`, `is_root_observation: true`) trong [`app/agent.py`](../app/agent.py).
+  - Child observation 1: `retrieval` (type `RETRIEVER`, có `parent_observation_id` trỏ về root `lab-agent-run`) trong [`app/mock_rag.py`](../app/mock_rag.py), ghi nhận thời gian tra cứu tài liệu từ corpus.
+  - Child observation 2: `fake-llm-generate` (type `GENERATION`, có `parent_observation_id` trỏ về root `lab-agent-run`) trong [`app/mock_llm.py`](../app/mock_llm.py), ghi nhận `model="claude-sonnet-4-5"`, token usage (`input_tokens`, `output_tokens`, `total`), chi phí `cost_details`, `ttft_ms` và liên kết prompt template.
 - **Cách nối trace với log:**
-  - Khi request đi qua `CorrelationIdMiddleware`, ID được gán vào `request.state.correlation_id`.
-  - Giá trị này vừa được bind vào Structlog context (ghi vào từng dòng log trong `data/logs.jsonl`), vừa được truyền vào `propagate_attributes(metadata={"correlation_id": correlation_id})` của Langfuse trace.
+  - Khi request đi qua [`app/middleware.py`](../app/middleware.py), ID được gán vào `request.state.correlation_id`.
+  - Giá trị này vừa được bind vào Structlog context (ghi vào từng dòng log trong `data/logs.jsonl`), vừa được truyền vào `propagate_attributes(metadata={"correlation_id": correlation_id})` của Langfuse trace trong [`app/agent.py`](../app/agent.py).
   - Khi điều tra sự cố, chỉ cần lấy `correlation_id` từ dòng log bất thường và tìm kiếm trực tiếp trên thanh filter của Langfuse sẽ ra ngay trace tương ứng.
 - **Prompt name:** `day13-chat`
 - **Version/label baseline:** Version 1 (gắn label `baseline`, ban đầu mang label `production`)
@@ -91,7 +91,7 @@
 ## 6. Dashboard, SLO và alerts
 
 - **Dashboard và sáu panel:**
-  - Thiết kế 6 panel chuẩn mực theo `config/dashboard.yaml` sử dụng nguồn dữ liệu `data/logs.jsonl`:
+  - Thiết kế 6 panel chuẩn mực theo contract [`config/dashboard.yaml`](../config/dashboard.yaml) sử dụng nguồn dữ liệu `data/logs.jsonl` và endpoint runtime `/dashboard` trong [`app/main.py`](../app/main.py):
     1. *Latency percentiles & TTFT:* P50/P95/P99 latency và TTFT P95 (threshold P95 <= 3000ms).
     2. *Request traffic:* Lưu lượng request theo phút và request rate (threshold rate >= 1 req/min).
     3. *Error rate & retrieval success:* Tỷ lệ lỗi request (threshold <= 2%), breakdown theo `error_type`, và tỷ lệ thành công của retrieval (threshold >= 90%).
@@ -99,6 +99,7 @@
     5. *Tokens in/out:* Tổng số tokens_in và tokens_out (threshold <= 50,000 tokens).
     6. *Quality proxy:* Điểm chất lượng trung bình của câu trả lời (threshold mean >= 0.75).
 - **SLO và lý do chọn:**
+  - Cấu hình SLO chính thức khai báo tại [`config/slo.yaml`](../config/slo.yaml):
   - Primary SLO: `fast_successful_requests` với mục tiêu 99.5% trong cửa sổ 28 ngày (`target_percent: 99.5%`).
   - Good event: `event == "response_sent" and latency_ms <= 3000` (request hoàn thành thành công trong thời gian dưới 3 giây).
   - Total event: `event == "request_received"`.
@@ -108,37 +109,38 @@
   - Ví dụ: Trong cửa sổ 28 ngày nếu hệ thống có 100,000 request, lượng request chậm quá 3000ms hoặc thất bại tối đa được phép là `100,000 * 0.5% = 500 request`.
   - Khi số request lỗi vượt quá 500, Error Budget bị cạn kiệt, đội ngũ phát triển phải dừng release tính năng mới để tập trung xử lý độ trễ và độ tin cậy.
 - **Ba alert và runbook tương ứng:**
-  - Alert 1: `HighLatencyP95Breach` (Severity: warning, condition: `latency_p95 > 3000ms`, duration: `5m`). Kênh Slack `#llmops-alerts`. Runbook tại `docs/alerts.md#alert-1` hướng dẫn kiểm tra xem trễ ở khâu Retrieval hay Generation, lấy correlation ID để tra Langfuse trace waterfall.
-  - Alert 2: `HighRequestErrorRate` (Severity: critical, condition: `error_rate_pct > 2.0%`, duration: `3m`). Kênh Slack `#llmops-alerts`. Runbook tại `docs/alerts.md#alert-2` hướng dẫn tra cứu `error_type` trong log, kiểm tra `/health` và kích hoạt circuit breaker/fallback.
-  - Alert 3: `RetrievalSuccessRateDrop` (Severity: warning, condition: `retrieval_success_rate_pct < 90.0%`, duration: `5m`). Kênh Slack `#llmops-alerts`. Runbook tại `docs/alerts.md#alert-3` hướng dẫn kiểm tra kết nối vector store, tra cứu log `tool_success == false` và mở trace span retrieval để kiểm tra lỗi timeout.
+  - Khai báo quy tắc cảnh báo tại [`config/alert_rules.yaml`](../config/alert_rules.yaml) và tài liệu quy trình ứng cứu tại [`docs/alerts.md`](../docs/alerts.md):
+  - Alert 1: `HighLatencyP95Breach` (Severity: warning, condition: `latency_p95 > 3000ms`, duration: `5m`). Kênh Slack `#llmops-alerts`. Runbook tại [`docs/alerts.md#alert-1`](../docs/alerts.md#alert-1-highlatencyp95breach) hướng dẫn kiểm tra xem trễ ở khâu Retrieval hay Generation, lấy correlation ID để tra Langfuse trace waterfall.
+  - Alert 2: `HighRequestErrorRate` (Severity: critical, condition: `error_rate_pct > 2.0%`, duration: `3m`). Kênh Slack `#llmops-alerts`. Runbook tại [`docs/alerts.md#alert-2`](../docs/alerts.md#alert-2-highrequesterrorrate) hướng dẫn tra cứu `error_type` trong log, kiểm tra `/health` và kích hoạt circuit breaker/fallback.
+  - Alert 3: `RetrievalSuccessRateDrop` (Severity: warning, condition: `retrieval_success_rate_pct < 90.0%`, duration: `5m`). Kênh Slack `#llmops-alerts`. Runbook tại [`docs/alerts.md#alert-3`](../docs/alerts.md#alert-3-retrievalsuccessratedrop) hướng dẫn kiểm tra kết nối vector store, tra cứu log `tool_success == false` và mở trace span retrieval để kiểm tra lỗi timeout.
 
 ## 7. Điều tra challenge
 
 - **Challenge ID:** `day13-k4-l3a-monitoring-llmops-v1`
 - **Khoảng thời gian điều tra:** 16:07 – 16:12 (Asia/Ho_Chi_Minh) / 09:07:00Z – 09:12:00Z (UTC), ngày 29/09/2026.
-- **Triệu chứng từ metrics:**
+- **Triệu chứng từ metrics (Chuỗi bước 1):**
   - Panel Latency trên Dashboard ghi nhận Latency P95 tăng vọt từ ~155ms lên **2652ms** trên server, và client load test đo được độ trễ lên tới **10,627ms – 13,282ms** (khi chạy concurrency 5).
   - Vượt ngưỡng cảnh báo `latency_threshold_ms: 2000` của challenge config và vi phạm SLO 3000ms.
   - Trong khi đó, chỉ số TTFT P95 vẫn duy trì ở mức tối ưu **50ms**, và tỷ lệ lỗi không tăng (HTTP status code 200, Error rate = 0%). Điều này cho thấy tầng sinh văn bản của mô hình LLM vẫn hoạt động bình thường, độ trễ phát sinh hoàn toàn ở khâu tiền xử lý (pre-processing/retrieval).
-- **Log line và correlation ID liên quan:**
-  - Correlation ID: `req-8023b38d`
-  - Dòng log `request_received`:
+- **Log line và correlation ID liên quan (Chuỗi bước 2):**
+  - Correlation ID đại diện tiêu biểu: `req-b6476978` (kèm theo `req-8023b38d` trong cùng đợt load test sự cố).
+  - Dòng log `request_received` của `req-b6476978`:
     ```json
-    {"service": "api", "payload": {"message_preview": "Which signal should be checked after latency increases?"}, "event": "request_received", "correlation_id": "req-8023b38d", "user_id_hash": "4570299f37e2", "env": "dev", "session_id": "k4-l3a-challenge-s04", "feature": "monitoring", "model": "claude-sonnet-4-5", "level": "info", "ts": "2026-09-29T09:07:23.972706Z"}
+    {"service": "api", "payload": {"message_preview": "Describe how to prove a slow span is the root cause."}, "event": "request_received", "correlation_id": "req-b6476978", "user_id_hash": "ed72e61117f6", "env": "dev", "session_id": "k4-l3a-challenge-s05", "feature": "monitoring", "model": "claude-sonnet-4-5", "level": "info", "ts": "2026-09-29T09:07:31.941328Z"}
     ```
-  - Dòng log `response_sent`:
+  - Dòng log `response_sent` của `req-b6476978` (và tương tự `req-8023b38d`):
     ```json
-    {"service": "api", "latency_ms": 2652, "ttft_ms": 50, "tokens_in": 36, "tokens_out": 93, "cost_usd": 0.001503, "quality_score": 0.9, "tool_name": "retrieval", "tool_success": true, "payload": {"answer_preview": "Starter answer. You should improve this output logic and add better quality chec..."}, "event": "response_sent", "correlation_id": "req-8023b38d", "user_id_hash": "4570299f37e2", "env": "dev", "session_id": "k4-l3a-challenge-s04", "feature": "monitoring", "model": "claude-sonnet-4-5", "level": "info", "ts": "2026-09-29T09:07:26.629394Z"}
+    {"service": "api", "latency_ms": 2652, "ttft_ms": 50, "tokens_in": 36, "tokens_out": 93, "cost_usd": 0.001503, "quality_score": 0.9, "tool_name": "retrieval", "tool_success": true, "payload": {"answer_preview": "Starter answer. You should improve this output logic and add better quality chec..."}, "event": "response_sent", "correlation_id": "req-b6476978", "user_id_hash": "ed72e61117f6", "env": "dev", "session_id": "k4-l3a-challenge-s05", "feature": "monitoring", "model": "claude-sonnet-4-5", "level": "info", "ts": "2026-09-29T09:07:34.595982Z"}
     ```
-- **Trace ID và span gây ảnh hưởng:**
-  - Trace ID: `24701f61c6fa653c9e7a89d98c2f6ed2` (tìm kiếm bằng correlation_id `req-8023b38d` trên Langfuse)
+- **Trace ID và span gây ảnh hưởng (Chuỗi bước 3 & 4):**
+  - Trace ID: `167283f82535a1d1e9a71c166a225c2b` (tìm kiếm bằng correlation_id `req-b6476978` trên Langfuse)
   - Phân tích cây Trace Waterfall:
     - Root observation `lab-agent-run` (type `AGENT`): tổng thời gian 2.653s.
     - Child observation `retrieval` (type `RETRIEVER`): thời gian chạy **2.502s** (chiếm ~94.3% tổng thời gian request).
     - Child observation `fake-llm-generate` (type `GENERATION`): thời gian chạy chỉ **0.151s** (chiếm ~5.7%).
   - Kết luận: Span gây ảnh hưởng chính là `retrieval`.
-- **Root cause:**
-  - Sự cố `rag_slow` được inject vào hệ thống làm nghẽn bước truy xuất dữ liệu vector store (`retrieve()` trong `app/mock_rag.py`). Hàm này bị chèn độ trễ nhân tạo `time.sleep(2.5)`.
+- **Root cause (Chuỗi bước 5):**
+  - Sự cố `rag_slow` được inject vào hệ thống làm nghẽn bước truy xuất dữ liệu vector store (`retrieve()` trong [`app/mock_rag.py`](../app/mock_rag.py)). Hàm này bị chèn độ trễ nhân tạo `time.sleep(2.5)`.
   - Khi có nhiều request gửi đồng thời (concurrency 5), việc các request đều bị nghẽn 2.5s tại khâu tìm kiếm tài liệu khiến hàng đợi bị dồn ứ, dẫn đến tổng thời gian chờ từ phía client tăng vọt lên hơn 10 - 13 giây.
 - **Fix action:**
   - Về mặt xử lý sự cố tức thời: Tắt incident `rag_slow` qua lệnh `python scripts/inject_incident.py --disable` (gọi endpoint `/incidents/rag_slow/disable`).
@@ -148,7 +150,7 @@
     3. Thêm Semantic Caching cho các truy vấn phổ biến để bỏ qua bước tra cứu lại đối với các câu hỏi tương tự.
     4. Thiết lập client timeout nghiêm ngặt (ví dụ: 1.5s) cho vector search kết hợp fallback về tra cứu từ khóa (BM25) hoặc sinh câu trả lời trực tiếp.
 - **Preventive measure:**
-  - Kích hoạt alert `HighLatencyP95Breach` (đã khai báo trong `config/alert_rules.yaml`) để gửi cảnh báo Slack ngay khi P95 > 3000ms kéo dài quá 5 phút.
+  - Kích hoạt alert `HighLatencyP95Breach` (đã khai báo trong [`config/alert_rules.yaml`](../config/alert_rules.yaml)) để gửi cảnh báo Slack ngay khi P95 > 3000ms kéo dài quá 5 phút.
   - Áp dụng kỹ thuật bất đồng bộ (async non-blocking I/O) khi gọi sang Vector DB.
   - Bổ sung circuit breaker để tự động cô lập vector store khi latency vượt ngưỡng và tự phục hồi khi hệ thống ổn định.
 

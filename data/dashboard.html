@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="refresh" content="30">
+  <title>K4-L3A Day 13 Monitoring & LLMOps Dashboard</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --card-bg: #161b22;
+      --border: #30363d;
+      --text-main: #f0f6fc;
+      --text-muted: #8b949e;
+      --accent: #58a6ff;
+      --green: #238636;
+      --green-badge: #1f6feb;
+      --warn: #d29922;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+    body { background: var(--bg); color: var(--text-main); padding: 24px; }
+    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 24px; }
+    .title h1 { font-size: 22px; font-weight: 600; color: #fff; }
+    .title p { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+    .meta-badges { display: flex; gap: 8px; }
+    .badge { background: #21262d; border: 1px solid var(--border); padding: 6px 12px; border-radius: 6px; font-size: 12px; color: var(--text-muted); }
+    .badge strong { color: var(--accent); }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+    @media (max-width: 1024px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 650px) { .grid { grid-template-columns: 1fr; } }
+    .panel { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 20px; display: flex; flex-direction: column; justify-content: space-between; min-height: 220px; }
+    .panel-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+    .panel-title { font-size: 15px; font-weight: 600; color: #fff; }
+    .panel-unit { font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-top: 2px; }
+    .status-tag { background: rgba(35, 134, 54, 0.2); border: 1px solid #2ea043; color: #3fb950; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 12px; }
+    .metrics-row { display: flex; gap: 16px; align-items: baseline; margin-bottom: 16px; }
+    .metric-item { display: flex; flex-direction: column; }
+    .metric-val { font-size: 26px; font-weight: 700; color: #fff; }
+    .metric-lbl { font-size: 12px; color: var(--text-muted); }
+    .threshold-box { border-top: 1px solid var(--border); padding-top: 10px; font-size: 12px; color: var(--text-muted); display: flex; justify-content: space-between; }
+    .threshold-val { color: var(--accent); font-weight: 500; }
+    .bar-bg { background: #21262d; border-radius: 4px; height: 6px; width: 100%; margin: 10px 0; overflow: hidden; }
+    .bar-fill { background: var(--accent); height: 100%; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="title">
+      <h1>K4-L3A Day 13 Monitoring & LLMOps Dashboard</h1>
+      <p>Học viên: <strong>Ngô Tiến Dũng</strong> | MSSV: <strong>2A202602374</strong> | Lớp: <strong>K4-L3A</strong></p>
+    </div>
+    <div class="meta-badges">
+      <div class="badge">Time Range: <strong>60 phút</strong></div>
+      <div class="badge">Refresh: <strong>30s</strong></div>
+      <div class="badge">Source: <strong>data/logs.jsonl</strong></div>
+      <div class="badge">Contract: <strong>6/6 Valid</strong></div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <!-- Panel 1: Latency -->
+    <div class="panel" id="panel-latency">
+      <div>
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">Latency percentiles and TTFT</div>
+            <div class="panel-unit">Đơn vị: Milliseconds (ms)</div>
+          </div>
+          <span class="status-tag">PASS</span>
+        </div>
+        <div class="metrics-row">
+          <div class="metric-item"><span class="metric-val">453ms</span><span class="metric-lbl">P50</span></div>
+          <div class="metric-item"><span class="metric-val" style="color: #79c0ff;">2652ms</span><span class="metric-lbl">P95</span></div>
+          <div class="metric-item"><span class="metric-val">2652ms</span><span class="metric-lbl">P99</span></div>
+          <div class="metric-item"><span class="metric-val">50ms</span><span class="metric-lbl">TTFT P95</span></div>
+        </div>
+        <div class="bar-bg"><div class="bar-fill" style="width: 88%;"></div></div>
+      </div>
+      <div class="threshold-box">
+        <span>SLO Threshold:</span>
+        <span class="threshold-val">P95 &le; 3000 ms</span>
+      </div>
+    </div>
+
+    <!-- Panel 2: Traffic -->
+    <div class="panel" id="panel-traffic">
+      <div>
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">Request traffic</div>
+            <div class="panel-unit">Đơn vị: Requests / minute</div>
+          </div>
+          <span class="status-tag">PASS</span>
+        </div>
+        <div class="metrics-row">
+          <div class="metric-item"><span class="metric-val">29</span><span class="metric-lbl">Tổng Requests</span></div>
+          <div class="metric-item"><span class="metric-val" style="color: #7ee787;">1.0</span><span class="metric-lbl">Rate / phút</span></div>
+        </div>
+        <div class="bar-bg"><div class="bar-fill" style="background: #238636; width: 65%;"></div></div>
+      </div>
+      <div class="threshold-box">
+        <span>Threshold:</span>
+        <span class="threshold-val">Rate &ge; 1 req/min</span>
+      </div>
+    </div>
+
+    <!-- Panel 3: Errors -->
+    <div class="panel" id="panel-errors">
+      <div>
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">Error rate and retrieval success</div>
+            <div class="panel-unit">Đơn vị: Percent (%)</div>
+          </div>
+          <span class="status-tag">PASS</span>
+        </div>
+        <div class="metrics-row">
+          <div class="metric-item"><span class="metric-val" style="color: #7ee787;">0.0%</span><span class="metric-lbl">Error Rate</span></div>
+          <div class="metric-item"><span class="metric-val" style="color: #7ee787;">100.0%</span><span class="metric-lbl">Retrieval Success</span></div>
+        </div>
+        <div class="bar-bg"><div class="bar-fill" style="background: #238636; width: 100%;"></div></div>
+      </div>
+      <div class="threshold-box">
+        <span>Thresholds:</span>
+        <span class="threshold-val">Errors &le; 2.0% | Success &ge; 90%</span>
+      </div>
+    </div>
+
+    <!-- Panel 4: Cost -->
+    <div class="panel" id="panel-cost">
+      <div>
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">Cost over time</div>
+            <div class="panel-unit">Đơn vị: USD ($)</div>
+          </div>
+          <span class="status-tag">PASS</span>
+        </div>
+        <div class="metrics-row">
+          <div class="metric-item"><span class="metric-val">$0.0595</span><span class="metric-lbl">Total Cost</span></div>
+          <div class="metric-item"><span class="metric-val">$2.50</span><span class="metric-lbl">Budget Cap</span></div>
+        </div>
+        <div class="bar-bg"><div class="bar-fill" style="width: 2%;"></div></div>
+      </div>
+      <div class="threshold-box">
+        <span>Threshold:</span>
+        <span class="threshold-val">Total &le; 2.50 USD</span>
+      </div>
+    </div>
+
+    <!-- Panel 5: Tokens -->
+    <div class="panel" id="panel-tokens">
+      <div>
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">Input and output tokens</div>
+            <div class="panel-unit">Đơn vị: Tokens</div>
+          </div>
+          <span class="status-tag">PASS</span>
+        </div>
+        <div class="metrics-row">
+          <div class="metric-item"><span class="metric-val">1,003</span><span class="metric-lbl">Tokens In</span></div>
+          <div class="metric-item"><span class="metric-val">3,766</span><span class="metric-lbl">Tokens Out</span></div>
+          <div class="metric-item"><span class="metric-val" style="color: #a5d6ff;">4,769</span><span class="metric-lbl">Total</span></div>
+        </div>
+        <div class="bar-bg"><div class="bar-fill" style="width: 9%;"></div></div>
+      </div>
+      <div class="threshold-box">
+        <span>Threshold:</span>
+        <span class="threshold-val">Tokens &le; 50,000</span>
+      </div>
+    </div>
+
+    <!-- Panel 6: Quality -->
+    <div class="panel" id="panel-quality">
+      <div>
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">Quality proxy</div>
+            <div class="panel-unit">Đơn vị: Score (0 - 1.0)</div>
+          </div>
+          <span class="status-tag">PASS</span>
+        </div>
+        <div class="metrics-row">
+          <div class="metric-item"><span class="metric-val" style="color: #7ee787;">0.87</span><span class="metric-lbl">Mean Quality</span></div>
+          <div class="metric-item"><span class="metric-val">1.00</span><span class="metric-lbl">Max Score</span></div>
+        </div>
+        <div class="bar-bg"><div class="bar-fill" style="background: #238636; width: 87%;"></div></div>
+      </div>
+      <div class="threshold-box">
+        <span>Threshold:</span>
+        <span class="threshold-val">Mean &ge; 0.75</span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

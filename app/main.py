@@ -4,10 +4,11 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from structlog.contextvars import bind_contextvars
 
 from .agent import LabAgent
+from .dashboard import render_dashboard_html
 from .incidents import disable, enable, status
 from .logging_config import configure_logging, get_logger
 from .metrics import record_error, snapshot
@@ -39,6 +40,11 @@ app.add_middleware(CorrelationIdMiddleware)
 @app.get("/health")
 async def health() -> dict:
     return {"ok": True, "tracing_enabled": tracing_enabled(), "incidents": status()}
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard_view() -> str:
+    return render_dashboard_html()
 
 
 @app.get("/metrics")
